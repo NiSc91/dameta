@@ -1,13 +1,14 @@
 import json
-import yaml
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple
-import matplotlib.pyplot as plt
-import seaborn as sns
-from collections import Counter, defaultdict
+from typing import Dict
+
 import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+import numpy as np
+import pandas as pd
+import yaml
+
 matplotlib.use('Agg')
 
 class ErrorAnalyzer:
@@ -169,126 +170,152 @@ class ErrorAnalyzer:
 
     def _create_figure1_overall_comparison(self, output_path):
         """Figure 1: Overall LLM vs Human performance comparison with proprietary/local separation"""
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        
+
+        fig, ax = plt.subplots()
+
         # Define model categories
         proprietary_models = ['openrouter/openai/gpt-4o-mini', 'openrouter/anthropic/claude-3.5-sonnet']
         local_models = ['llama3.1', 'gemma2', 'mistral', 'qwen2.5', 'phi4']
-        
+
         # Calculate overall statistics
         prompt_v1 = self.df[self.df['prompt_type'] == 'met_v1']
         prompt_v2 = self.df[self.df['prompt_type'] == 'met_v2']
-        
+
         # Calculate accuracy for proprietary vs local models
         v1_proprietary = prompt_v1[prompt_v1['model'].isin(proprietary_models)]
         v1_local = prompt_v1[prompt_v1['model'].isin(local_models)]
         v2_proprietary = prompt_v2[prompt_v2['model'].isin(proprietary_models)]
         v2_local = prompt_v2[prompt_v2['model'].isin(local_models)]
-        
+
         # Accuracy data
         human_acc = 89.58
         v1_prop_acc = v1_proprietary['is_correct'].mean() * 100 if len(v1_proprietary) > 0 else 0
         v1_local_acc = v1_local['is_correct'].mean() * 100 if len(v1_local) > 0 else 0
         v2_prop_acc = v2_proprietary['is_correct'].mean() * 100 if len(v2_proprietary) > 0 else 0
         v2_local_acc = v2_local['is_correct'].mean() * 100 if len(v2_local) > 0 else 0
-        
+
         # Don't know rates
-        v1_prop_dk = v1_proprietary['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_proprietary.columns and len(v1_proprietary) > 0 else 0
-        v1_local_dk = v1_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_local.columns and len(v1_local) > 0 else 0
-        v2_prop_dk = v2_proprietary['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_proprietary.columns and len(v2_proprietary) > 0 else 0
-        v2_local_dk = v2_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_local.columns and len(v2_local) > 0 else 0
-        
+        v1_prop_dk = v1_proprietary[
+                         'chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_proprietary.columns and len(
+            v1_proprietary) > 0 else 0
+        v1_local_dk = v1_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_local.columns and len(
+            v1_local) > 0 else 0
+        v2_prop_dk = v2_proprietary[
+                         'chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_proprietary.columns and len(
+            v2_proprietary) > 0 else 0
+        v2_local_dk = v2_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_local.columns and len(
+            v2_local) > 0 else 0
+
         # Left plot: Accuracy comparison
-        categories = ['Human', 'Proprietary\nLLMs', 'Local\nLLMs']
-        v1_accuracies = [human_acc, v1_prop_acc, v1_local_acc]
-        v2_accuracies = [human_acc, v2_prop_acc, v2_local_acc]
-        
+        categories = ['Proprietary LLMs', 'Open LLMs']
+        v1_accuracies = [v1_prop_acc, v1_local_acc]
+        v2_accuracies = [v2_prop_acc, v2_local_acc]
+
         x = np.arange(len(categories))
         width = 0.35
-        
+
+        colours_V1 = ['#0B5355', '#CB582B']
+        colours_V2 = ['#0EA2AA', '#F79C61']
+        human_colour = ['#EBBC21', '#BB9311']
+
+        ax.axhline(y=human_acc, color=human_colour[0], linestyle='--', alpha=1,
+                   linewidth=2.5)
+
+        # Add label to the special bar
+        ax.text(1.7, human_acc - 5,
+                f'Human Accuracy: {human_acc:.1f}%', ha='center', va='bottom',
+                fontsize=10, fontweight='bold', color=human_colour[1])
+
         # Create bars for both prompt versions
-        bars1 = ax1.bar(x - width/2, v1_accuracies, width, label='Prompt V1', 
-                        color='#2ecc71', alpha=0.8, edgecolor='black', linewidth=1.5)
-        bars2 = ax1.bar(x + width/2, v2_accuracies, width, label='Prompt V2', 
-                        color='#e74c3c', alpha=0.8, edgecolor='black', linewidth=1.5)
-        
+        bars1 = ax.bar(x + 1 - width / 2, v1_accuracies, width, label='Prompt V1',
+                       color=colours_V1, alpha=0.8, )  # edgecolor='grey', linewidth=1)
+        bars2 = ax.bar(x + 1 + width / 2, v2_accuracies, width, label='Prompt V2',
+                       color=colours_V2, alpha=0.8, )  # edgecolor='grey', linewidth=1)
+
         # Add value labels on bars
         for bars, accs in [(bars1, v1_accuracies), (bars2, v2_accuracies)]:
             for bar, acc in zip(bars, accs):
                 if acc > 0:  # Only show if there's data
                     height = bar.get_height()
-                    ax1.text(bar.get_x() + bar.get_width()/2., height + 1,
+                    ax.text(bar.get_x() + bar.get_width() / 2., height + 1,
                             f'{acc:.1f}%', ha='center', va='bottom', fontsize=10, fontweight='bold')
-        
-        ax1.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-        ax1.set_title('Overall Performance Comparison', fontsize=14, fontweight='bold')
-        ax1.set_ylim(0, 100)
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(categories)
-        ax1.legend()
-        ax1.grid(axis='y', alpha=0.3)
-        
+
+        ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
+        # plt.title('Overall Performance Comparison', fontsize=14, fontweight='bold')
+        ax.set_ylim(0, 100)
+        ax.set_xticks([1, 2], labels=categories)
+
+        colours = [colours_V1[0], colours_V2[0], colours_V1[1], colours_V2[1]]
+        labels = [
+            'Proprietary (prompt 1)', 'Proprietary (prompt 2)', 'Open (prompt 1)',
+            'Open (prompt 2)']
+
+        # Create legend handles
+        legend_elements = [Patch(facecolor=col, edgecolor='grey', label=lab)
+                           for col, lab in zip(colours, labels)]
+
+        # Add legend to plot
+        ax.legend(handles=legend_elements, loc='lower center', ncol=2,
+                  bbox_to_anchor=(0.5, 1.05)
+                  )
+
+        # Add extra space above the plot to avoid overlap
+        fig.subplots_adjust(top=0.5)  # Adjust as needed
+
+        ax.grid(axis='y', alpha=0.3, )
+
+        fig.tight_layout()
+        plt.savefig(output_path / 'figure1_overall_comparison.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
+        plt.figure(figsize=(8, 6))
+
         # Right plot: Distractor distribution
-        display_labels = ['Correct', 'Distractor 1', 'Distractor 2', 'Distractor 3']
-        
+        display_labels = ['Literal distract.', 'Figurative distract.', 'Contradictory distract.', "Don't know"]
+
         # Human distribution
-        human_dist = [89.58, 3.70, 5.32, 1.39]
-        
+        human_dist = [3.70, 5.32, 1.39, 0]
+
         # Calculate distributions for proprietary and local models
         def calculate_distribution(df_subset):
             dist = []
             if len(df_subset) == 0:
-                return [0, 0, 0, 0]
-            for exp in ['exp1', 'exp2', 'exp3', 'exp4']:
+                return [0, 0, 0]
+            for exp in ['exp2', 'exp3', 'exp4', 'dont_know']:
                 pred_count = (df_subset['predicted_original'] == exp).sum()
                 dist.append(pred_count / len(df_subset) * 100)
             return dist
-        
+
         v1_prop_dist = calculate_distribution(v1_proprietary)
         v1_local_dist = calculate_distribution(v1_local)
         v2_prop_dist = calculate_distribution(v2_proprietary)
         v2_local_dist = calculate_distribution(v2_local)
-        
+
         x = np.arange(len(display_labels))
         width = 0.15
-        
+
         # Create grouped bars
-        bars1 = ax2.bar(x - 1.5*width, human_dist, width, label='Human', color='#3498db', alpha=0.8)
-        bars2 = ax2.bar(x - 0.5*width, v1_prop_dist, width, label='Proprietary (V1)', color='#2ecc71', alpha=0.8)
-        bars3 = ax2.bar(x + 0.5*width, v1_local_dist, width, label='Local (V1)', color='#e74c3c', alpha=0.8)
-        bars4 = ax2.bar(x + 1.5*width, v2_prop_dist, width, label='Proprietary (V2)', color='#27ae60', alpha=0.8)
-        bars5 = ax2.bar(x + 2.5*width, v2_local_dist, width, label='Local (V2)', color='#c0392b', alpha=0.8)
-        
-        ax2.set_xlabel('Response Type', fontsize=12, fontweight='bold')
-        ax2.set_ylabel('Percentage (%)', fontsize=12, fontweight='bold')
-        ax2.set_title('Response Distribution Comparison', fontsize=14, fontweight='bold')
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(display_labels)
-        ax2.legend(loc='upper right', fontsize=9)
-        ax2.grid(axis='y', alpha=0.3)
-        
-        # Add don't know rate annotation if applicable
-        dk_rates = []
-        if v1_prop_dk > 0:
-            dk_rates.append(f"Proprietary V1: {v1_prop_dk:.1f}%")
-        if v1_local_dk > 0:
-            dk_rates.append(f"Local V1: {v1_local_dk:.1f}%")
-        if v2_prop_dk > 0:
-            dk_rates.append(f"Proprietary V2: {v2_prop_dk:.1f}%")
-        if v2_local_dk > 0:
-            dk_rates.append(f"Local V2: {v2_local_dk:.1f}%")
-        
-        if dk_rates:
-            dk_text = "Don't Know Rates:\n" + "\n".join(dk_rates)
-            ax2.text(0.98, 0.65, dk_text, transform=ax2.transAxes,
-                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-                    verticalalignment='top', horizontalalignment='right', fontsize=9)
-        
-        plt.suptitle('Figure 1: Performance Comparison - Humans vs Proprietary vs Local LLMs', fontsize=16, fontweight='bold')
+        bars1 = plt.bar(x - 1.5 * width, human_dist, width, label='Human', color=human_colour[0], alpha=0.8)
+        bars2 = plt.bar(x - 0.5 * width, v1_prop_dist, width, label='Proprietary (prompt 1)', color='#0B5355',
+                        alpha=0.8)
+        bars3 = plt.bar(x + 0.5 * width, v2_prop_dist, width, label='Proprietary (prompt 2)', color='#0EA2AA',
+                        alpha=0.8)
+        bars4 = plt.bar(x + 1.5 * width, v1_local_dist, width, label='Open (prompt 1)', color='#CB582B', alpha=0.8)
+        bars5 = plt.bar(x + 2.5 * width, v2_local_dist, width, label='Open (prompt 2)', color='#F79C61', alpha=0.8)
+
+        plt.xlabel('Response Type', fontsize=12, fontweight='bold')
+        plt.ylabel('Percentage (%)', fontsize=12, fontweight='bold')
+        # plt.title('Response Distribution Comparison', fontsize=14, fontweight='bold')
+        plt.xticks(x, labels=display_labels)
+        plt.legend(loc='upper right', fontsize=12)
+
+        plt.yticks(range(0, 13, 1))
+        plt.grid(axis='y', alpha=0.3)
+
         plt.tight_layout()
-        plt.savefig(output_path / 'figure1_overall_comparison.png', dpi=300, bbox_inches='tight')
+        plt.savefig(output_path / 'figure2_distractor_comparison.png', dpi=300, bbox_inches='tight')
         plt.close()
-    
+
     def _create_table2_model_performance(self, output_path):
         """Table 2: Model performance comparison showing accuracy and don't-know rates"""
         
@@ -359,10 +386,10 @@ class ErrorAnalyzer:
             model_name = row['Model'].replace('_', '\\_')
             
             # Format the row
-            latex_table.append(f"{model_name} & {row['Type']} & "
-                            f"{row['V1 Accuracy']:.1f} & {row['V1 Don\'t Know']:.1f} & "
-                            f"{row['V2 Accuracy']:.1f} & {row['V2 Don\'t Know']:.1f} \\\\")
-        
+            latex_table.append(f"""{model_name} & {row['Type']} & """
+                            f"""{row['V1 Accuracy']:.1f} & {row["V1 Don't Know"]:.1f} & """
+                            f"""{row['V2 Accuracy']:.1f} & {row["V2 Don't Know"]:.1f} \\\\""")
+
         latex_table.append("\\bottomrule")
         latex_table.append("\\end{tabular}")
         latex_table.append("\\end{table}")
@@ -387,9 +414,9 @@ class ErrorAnalyzer:
         print("-"*80)
         
         for row in table_data:
-            print(f"{row['Model']:<40} {row['Type']:<12} "
-                f"{row['V1 Accuracy']:>8.1f} {row['V1 Don\'t Know']:>8.1f} "
-                f"{row['V2 Accuracy']:>8.1f} {row['V2 Don\'t Know']:>8.1f}")
+            print(f"""{row['Model']:<40} {row['Type']:<12} """
+                f"""{row['V1 Accuracy']:>8.1f} {row["V1 Don't Know"]:>8.1f} """
+                f"""{row['V2 Accuracy']:>8.1f} {row["V2 Don't Know"]:>8.1f}""")
         
         print("="*80)
         print(f"\nLaTeX table saved to: {output_path / 'table2_model_performance.tex'}")
@@ -422,7 +449,7 @@ class ErrorAnalyzer:
             x = np.arange(len(display_labels))
             width = 0.8 / len(models)
             
-            colors_palette = plt.cm.Set3(np.linspace(0, 1, len(models)))
+            colors_palette = plt.cm.Set2(np.linspace(0, 1, len(models)))
             
             for i, model in enumerate(models):
                 offset = (i - len(models)/2 + 0.5) * width
@@ -507,49 +534,49 @@ class ErrorAnalyzer:
                 model_accs.append(acc)
             accuracy_data[model] = model_accs
 
-        # Print a textual summary for Figure 2
-        print("\n" + "="*80)
-        print("Figure 2: Model Performance by Type (Averaged over Prompt Versions)")
-        print("="*80)
-        header = ["Model"] + list(types)
-        print(" | ".join(f"{h:>20}" for h in header))
-        print("-"*80)
-        for model in models:
-            row_vals = [model_display_names[model]] + [f"{acc:.1f}%" for acc in accuracy_data[model]]
-            print(" | ".join(f"{v:>20}" for v in row_vals))
-        print("="*80)
+        # # Print a textual summary for Figure 2
+        # print("\n" + "="*80)
+        # print("Figure 2: Model Performance by Type (Averaged over Prompt Versions)")
+        # print("="*80)
+        # header = ["Model"] + list(types)
+        # print(" | ".join(f"{h:>20}" for h in header))
+        # print("-"*80)
+        # for model in models:
+        #     row_vals = [model_display_names[model]] + [f"{acc:.1f}%" for acc in accuracy_data[model]]
+        #     print(" | ".join(f"{v:>20}" for v in row_vals))
+        # print("="*80)
         
         # Create figure
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 8))
         
         x = np.arange(len(models)) * 1.2
         width = 0.35
         
-        colors = ['#2ecc71', '#e74c3c', '#3498db']  # Green, Red, Blue
-        
+        colors = ['#649BD5', '#6FA054', '#E36D3F']  # Blue, Green, Orange
+
         for i, type_label in enumerate(types):
             values = [accuracy_data[model][i] for model in models]
-            bars = ax.bar(x + i * width, values, width, label=type_label, 
-                         color=colors[i % len(colors)], alpha=0.8, edgecolor='black')
-            
+            bars = ax.bar(x + i * width, values, width, label=type_label,
+                          color=colors[i % len(colors)], alpha=0.8)  # , edgecolor='black')
+
             # Add value labels
             for bar, val in zip(bars, values):
                 if val > 0:
-                    ax.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 1,
-                           f'{val:.0f}%', ha='center', va='bottom', fontsize=6)
-        
+                    ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height() + 1,
+                            f'{val:.0f}%', ha='center', va='bottom', fontsize=14, rotation=90)
+
         ax.set_xlabel('Model', fontsize=12, fontweight='bold')
         ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-        ax.set_title('Figure 2: Model Performance by Type (Averaged over Prompt Versions)',
-                    fontsize=14, fontweight='bold')
+        # ax.set_title('Model Performance by Type (Averaged over Prompt Versions)',
+        #            fontsize=14, fontweight='bold')
         ax.set_xticks(x + width / 2)
-        ax.set_xticklabels([model_display_names[m] for m in models], rotation=45, ha='right')
+        ax.set_xticklabels([model_display_names[m] for m in models], rotation=30, ha='right', fontsize=14)
         ax.legend()
         ax.grid(axis='y', alpha=0.3)
         ax.set_ylim(0, 110)
-        
+
         plt.tight_layout()
-        plt.savefig(output_path / 'figure2_type_analysis.png', dpi=300, bbox_inches='tight')
+        plt.savefig(output_path / 'figure3_type_analysis.png', dpi=300, bbox_inches='tight')
         plt.close()
 
     def _create_figure3_topic_analysis(self, output_path):
@@ -584,65 +611,69 @@ class ErrorAnalyzer:
 
         # Get top topics by frequency
         topic_counts = ddo_df.groupby('topic')['idx'].nunique()
-        top_topics = [t for t in topic_counts.nlargest(10).index.tolist() 
+        top_topics = [t for t in topic_counts.nlargest(11).index.tolist()
                       if t not in ['communication', 'psychology']]
-        
-        # Calculate accuracy and counts per topic
-        topics = [t for t in top_topics]
-        accuracies = []
-        counts = []
+
+        # Calculate accuracy by topic
+        topic_accuracy = {}
         for topic in top_topics:
             topic_df = ddo_df[ddo_df['topic'] == topic]
             acc = topic_df['is_correct'].mean() * 100
             count = topic_df['idx'].nunique()
-            accuracies.append(acc)
-            counts.append(count)
+            topic_accuracy[topic] = (acc, count)
+
+        # Sort by accuracy
+        sorted_topics = sorted(topic_accuracy.items(), key=lambda x: x[1][0], reverse=True)
+
+        topics = [t[0] for t in sorted_topics]
+        accuracies = [t[1][0] for t in sorted_topics]
+        counts = [t[1][1] for t in sorted_topics]
 
         # Print a textual summary for Figure 3
-        print("\n" + "="*80)
-        print("Figure 3: Performance by Source Domain in SN_DDO Dataset")
-        print("(Averaged over Prompt Versions)")
-        print("="*80)
-        print(f"{'Topic':<30} {'Accuracy %':>12} {'n_items':>10}")
-        print("-"*80)
-        for topic, acc, n in zip(topics, accuracies, counts):
-            print(f"{topic:<30} {acc:>12.1f} {n:>10}")
-        overall_acc = ddo_df['is_correct'].mean() * 100
-        print("-"*80)
-        print(f"{'Overall SN_DDO':<30} {overall_acc:>12.1f}")
-        print("="*80)
+        # print("\n" + "="*80)
+        # print("Figure 3: Performance by Source Domain in SN_DDO Dataset")
+        # print("(Averaged over Prompt Versions)")
+        # print("="*80)
+        # print(f"{'Topic':<30} {'Accuracy %':>12} {'n_items':>10}")
+        # print("-"*80)
+        # for topic, acc, n in zip(topics, accuracies, counts):
+        #     print(f"{topic:<30} {acc:>12.1f} {n:>10}")
+        # overall_acc = ddo_df['is_correct'].mean() * 100
+        # print("-"*80)
+        # print(f"{'Overall SN_DDO':<30} {overall_acc:>12.1f}")
+        # print("="*80)
 
         # Create figure
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(10, 6))
 
         # Color gradient based on accuracy
-        colors = plt.cm.RdYlGn(np.linspace(0.3, 0.9, len(topics)))
+        colors = plt.cm.Set3(np.linspace(0.2, 1, len(topics)))
 
-        bars = ax.bar(topics, accuracies, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
+        bars = ax.bar(topics, accuracies, color=colors, alpha=1)  # , edgecolor='black', linewidth=1.5)
 
         # Add value and count labels
         for bar, acc, count in zip(bars, accuracies, counts):
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 1,
-                    f'{acc:.0f}%\n(n={count})', ha='center', va='bottom', 
+            ax.text(bar.get_x() + bar.get_width() / 2., height / 2,
+                    f'{acc:.0f}%\n(n={count})', ha='center', va='bottom',
                     fontsize=10, fontweight='bold')
 
         # Add overall average line
         overall_acc = ddo_df['is_correct'].mean() * 100
         ax.axhline(y=overall_acc, color='red', linestyle='--', alpha=0.7,
-                   label=f'Overall SN_DDO: {overall_acc:.1f}%')
+                   label=f'Overall DDO: {overall_acc:.1f}%', linewidth=2)
 
-        ax.set_xlabel('Source Domain', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-        ax.set_title('Figure 3: Performance by Source Domain in SN_DDO Dataset (Averaged over Prompt Versions)',
-                     fontsize=14, fontweight='bold')
-        ax.set_xticklabels(topics, rotation=45, ha='right')
-        ax.legend()
+        ax.set_xlabel('Source Domain', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Accuracy (%)', fontsize=14, fontweight='bold')
+        # ax.set_title('Performance by Source Domain in DDO Dataset (Averaged over Prompt Versions)',
+        #            fontsize=14, fontweight='bold')
+        ax.set_xticklabels(topics, rotation=30, ha='right', fontsize=14)
+        ax.legend(fontsize=14)
         ax.grid(axis='y', alpha=0.3)
         ax.set_ylim(0, 100)
 
         plt.tight_layout()
-        plt.savefig(output_path / 'figure3_topic_analysis.png', dpi=300, bbox_inches='tight')
+        plt.savefig(output_path / 'figure4_domain_analysis.png', dpi=300, bbox_inches='tight')
         plt.close()
 
     def print_summary(self):
