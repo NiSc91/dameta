@@ -42,7 +42,8 @@ class ErrorAnalyzer:
             'litteratur': 'literature', 'mad/gastronomi': 'food/gastronomy',
             'medicin/sundhed': 'medicine/health', 'meteorologi': 'meteorology',
             'militær': 'military', 'musik': 'music',
-            'psykologi': 'psychology', 'trafik': 'traffic'
+            'psykologi': 'psychology', 'trafik': 'traffic',
+            'skib/søfart': 'shipping/nautical'
         }
 
         metadata: Dict[str, Dict] = {}
