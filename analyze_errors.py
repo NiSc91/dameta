@@ -162,6 +162,9 @@ class ErrorAnalyzer:
         # Figure 3: Error distribution by topic (averaged over prompts)
         self._create_figure3_topic_analysis(output_path)
         
+        # Save machine-readable summary of all key analyses
+        self._save_analysis_summary(output_path)
+
         print(f"All figures saved to {output_path}")
 
     def _create_figure1_overall_comparison(self, output_path):
@@ -657,6 +660,132 @@ class ErrorAnalyzer:
             print(f"  Accuracy: {prompt_df['is_correct'].mean():.2%}")
             if 'chose_dont_know' in prompt_df.columns:
                 print(f"  Don't know rate: {prompt_df['chose_dont_know'].mean():.2%}")
+
+    def _save_analysis_summary(self, output_path: Path):
+        """Compute and save a JSON summary of key analyses, and print per-dataset stats."""
+
+        summary = {}
+
+        # Overall and per-prompt accuracy / don't-know
+        overall_acc = float(self.df['is_correct'].mean()) if 'is_correct' in self.df.columns else None
+        summary['overall'] = {
+            'total_evaluations': int(len(self.df)),
+            'accuracy': overall_acc,
+        }
+
+        per_prompt = {}
+        for prompt_type in sorted(self.df['prompt_type'].dropna().unique()):
+            prompt_df = self.df[self.df['prompt_type'] == prompt_type]
+            acc = float(prompt_df['is_correct'].mean()) if len(prompt_df) > 0 else None
+            dk = float(prompt_df['chose_dont_know'].mean()) if 'chose_dont_know' in prompt_df.columns and len(prompt_df) > 0 else None
+            per_prompt[prompt_type] = {
+                'n': int(len(prompt_df)),
+                'accuracy': acc,
+                'dont_know_rate': dk,
+            }
+        summary['per_prompt'] = per_prompt
+
+        # Per-model, per-prompt accuracy / don't-know (similar to Table 2)
+        per_model_prompt = {}
+        for model in sorted(self.df['model'].dropna().unique()):
+            model_data = {}
+            model_df = self.df[self.df['model'] == model]
+            for prompt_type in sorted(model_df['prompt_type'].dropna().unique()):
+                mp_df = model_df[model_df['prompt_type'] == prompt_type]
+                acc = float(mp_df['is_correct'].mean()) if len(mp_df) > 0 else None
+                dk = float(mp_df['chose_dont_know'].mean()) if 'chose_dont_know' in mp_df.columns and len(mp_df) > 0 else None
+                model_data[prompt_type] = {
+                    'n': int(len(mp_df)),
+                    'accuracy': acc,
+                    'dont_know_rate': dk,
+                }
+            per_model_prompt[model] = model_data
+        summary['per_model_prompt'] = per_model_prompt
+
+        # Per-dataset accuracy and don't-know, preferring source_dataset_short
+        dataset_col = None
+        for candidate in ['source_dataset_short', 'source_dataset', 'dataset']:
+            if candidate in self.df.columns:
+                dataset_col = candidate
+                break
+
+        per_dataset = {}
+        if dataset_col is not None:
+            for ds in sorted(self.df[dataset_col].dropna().unique()):
+                ds_df = self.df[self.df[dataset_col] == ds]
+                acc = float(ds_df['is_correct'].mean()) if len(ds_df) > 0 else None
+                dk = float(ds_df['chose_dont_know'].mean()) if 'chose_dont_know' in ds_df.columns and len(ds_df) > 0 else None
+                per_dataset[ds] = {
+                    'n': int(len(ds_df)),
+                    'accuracy': acc,
+                    'dont_know_rate': dk,
+                }
+        summary['per_dataset'] = per_dataset
+
+        # Type-level summary (mirrors Figure 2 logic)
+        type_summary = {}
+        if self.dataset_metadata:
+            df_with_type = self.df.copy()
+
+            def _lookup_type(row):
+                ds_key = row.get('source_dataset_short') or row.get('dataset')
+                if ds_key is None:
+                    return None
+                return self.dataset_metadata.get(ds_key, {}).get('type_mapping', {}).get(row['idx'], None)
+
+            df_with_type['type'] = df_with_type.apply(_lookup_type, axis=1)
+            df_with_type = df_with_type.dropna(subset=['type'])
+            df_with_type['type'] = df_with_type['type'].astype(str)
+            df_with_type = df_with_type[df_with_type['type'].isin(['1', '2', '3'])]
+
+            for model in sorted(df_with_type['model'].dropna().unique()):
+                m_df = df_with_type[df_with_type['model'] == model]
+                model_types = {}
+                for t in sorted(m_df['type'].unique()):
+                    t_df = m_df[m_df['type'] == t]
+                    acc = float(t_df['is_correct'].mean()) if len(t_df) > 0 else None
+                    model_types[t] = {
+                        'n': int(len(t_df)),
+                        'accuracy': acc,
+                    }
+                type_summary[model] = model_types
+        summary['per_model_type'] = type_summary
+
+        # Topic-level summary for SN_DDO (mirrors Figure 3 logic)
+        topic_summary = {}
+        if 'source_dataset_short' in self.df.columns and \
+           'SN_DDO' in self.dataset_metadata and \
+           'topic_mapping' in self.dataset_metadata['SN_DDO']:
+            ddo_df = self.df[self.df['source_dataset_short'] == 'SN_DDO'].copy()
+            if len(ddo_df) > 0:
+                topic_mapping = self.dataset_metadata['SN_DDO']['topic_mapping']
+                ddo_df['topic'] = ddo_df['idx'].map(topic_mapping)
+                ddo_df = ddo_df.dropna(subset=['topic'])
+                if len(ddo_df) > 0:
+                    topic_counts = ddo_df.groupby('topic')['idx'].nunique()
+                    top_topics = [t for t in topic_counts.nlargest(10).index.tolist() 
+                                  if t not in ['communication', 'psychology']]
+                    for topic in top_topics:
+                        t_df = ddo_df[ddo_df['topic'] == topic]
+                        acc = float(t_df['is_correct'].mean()) if len(t_df) > 0 else None
+                        n_items = int(t_df['idx'].nunique())
+                        topic_summary[topic] = {
+                            'n_items': n_items,
+                            'accuracy': acc,
+                        }
+                    overall_acc_sn_ddo = float(ddo_df['is_correct'].mean()) if len(ddo_df) > 0 else None
+                    topic_summary['_overall_SN_DDO'] = {
+                        'accuracy': overall_acc_sn_ddo,
+                        'n_items': int(ddo_df['idx'].nunique()),
+                    }
+        summary['topics_SN_DDO'] = topic_summary
+
+        # Save summary JSON
+        summary_path = output_path / 'analysis_summary.json'
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+
+        print(f"Analysis summary saved to: {summary_path}")
 
 
 def main():
