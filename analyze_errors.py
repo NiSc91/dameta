@@ -207,22 +207,22 @@ class ErrorAnalyzer:
             v2_local) > 0 else 0
 
         # Console summary for Figure 1
-        print("\n" + "="*80)
-        print("Figure 1: Overall performance and don't-know rates")
-        print("(Human baseline vs Proprietary vs Local LLMs)")
-        print("="*80)
-        print("Accuracy (%):")
-        print(f"  Human                : {human_acc:5.1f}")
-        print(f"  Proprietary (V1)     : {v1_prop_acc:5.1f}")
-        print(f"  Local (V1)           : {v1_local_acc:5.1f}")
-        print(f"  Proprietary (V2)     : {v2_prop_acc:5.1f}")
-        print(f"  Local (V2)           : {v2_local_acc:5.1f}")
-        print("\nDon't-know rates (%):")
-        print(f"  Proprietary (V1)     : {v1_prop_dk:5.1f}")
-        print(f"  Local (V1)           : {v1_local_dk:5.1f}")
-        print(f"  Proprietary (V2)     : {v2_prop_dk:5.1f}")
-        print(f"  Local (V2)           : {v2_local_dk:5.1f}")
-        print("="*80)
+        #print("\n" + "="*80)
+        #print("Figure 1: Overall performance and don't-know rates")
+        #print("(Human baseline vs Proprietary vs Local LLMs)")
+        #print("="*80)
+        #print("Accuracy (%):")
+        #print(f"  Human                : {human_acc:5.1f}")
+        #print(f"  Proprietary (V1)     : {v1_prop_acc:5.1f}")
+        #print(f"  Local (V1)           : {v1_local_acc:5.1f}")
+        #print(f"  Proprietary (V2)     : {v2_prop_acc:5.1f}")
+        #print(f"  Local (V2)           : {v2_local_acc:5.1f}")
+        #print("\nDon't-know rates (%):")
+        #print(f"  Proprietary (V1)     : {v1_prop_dk:5.1f}")
+        #print(f"  Local (V1)           : {v1_local_dk:5.1f}")
+        #print(f"  Proprietary (V2)     : {v2_prop_dk:5.1f}")
+        #print(f"  Local (V2)           : {v2_local_dk:5.1f}")
+        #print("="*80)
         
         # Left plot: Accuracy comparison
         categories = ['Proprietary LLMs', 'Open LLMs']
