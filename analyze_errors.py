@@ -195,7 +195,6 @@ class ErrorAnalyzer:
         v2_local_acc = v2_local['is_correct'].mean() * 100 if len(v2_local) > 0 else 0
 
         # Don't know rates
-<<<<<<< HEAD
         v1_prop_dk = v1_proprietary[
                          'chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_proprietary.columns and len(
             v1_proprietary) > 0 else 0
@@ -206,12 +205,6 @@ class ErrorAnalyzer:
             v2_proprietary) > 0 else 0
         v2_local_dk = v2_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_local.columns and len(
             v2_local) > 0 else 0
-
-=======
-        v1_prop_dk = v1_proprietary['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_proprietary.columns and len(v1_proprietary) > 0 else 0
-        v1_local_dk = v1_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_local.columns and len(v1_local) > 0 else 0
-        v2_prop_dk = v2_proprietary['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_proprietary.columns and len(v2_proprietary) > 0 else 0
-        v2_local_dk = v2_local['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_local.columns and len(v2_local) > 0 else 0
 
         # Console summary for Figure 1
         print("\n" + "="*80)
@@ -231,7 +224,6 @@ class ErrorAnalyzer:
         print(f"  Local (V2)           : {v2_local_dk:5.1f}")
         print("="*80)
         
->>>>>>> c12456e (Before merge)
         # Left plot: Accuracy comparison
         categories = ['Proprietary LLMs', 'Open LLMs']
         v1_accuracies = [v1_prop_acc, v1_local_acc]
