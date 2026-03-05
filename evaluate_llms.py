@@ -242,11 +242,39 @@ class ResultsManager:
         self.errors_buffer = []
         self.all_results = []  # Keep all results across models
         self.all_errors = []   # Keep all errors across models
-        
+
+    def _sanitize_record(self, record: Dict) -> Dict:
+        """Ensure all values in a record are JSON-serializable.
+
+        This is defensive against unexpected objects (e.g. exceptions) ending up
+        in fields like 'error'. Non-primitive types are converted to strings,
+        while dicts/lists are sanitized recursively.
+        """
+
+        def _convert(key, value):
+            # Log detailed info for unexpected error payloads
+            if key == 'error' and value is not None and not isinstance(value, (str, int, float, bool)):
+                logger.debug(
+                    "Sanitizing non-primitive error value of type %s: %s",
+                    type(value), repr(value)
+                )
+
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, dict):
+                return {k: _convert(k, v) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [_convert(key, v) for v in value]
+            # Fallback for anything else (e.g. Exception, custom objects)
+            return str(value)
+
+        return {k: _convert(k, v) for k, v in record.items()}
+
     def add_result(self, result: Dict):
         """Add a result to the buffer"""
-        self.results_buffer.append(result)
-        self.all_results.append(result)  # Also add to permanent storage
+        sanitized = self._sanitize_record(result)
+        self.results_buffer.append(sanitized)
+        self.all_results.append(sanitized)  # Also add to permanent storage
         
         # Save incrementally every 100 results
         if len(self.results_buffer) % 100 == 0:
@@ -254,8 +282,9 @@ class ResultsManager:
     
     def add_error(self, error: Dict):
         """Add an error to the buffer"""
-        self.errors_buffer.append(error)
-        self.all_errors.append(error)  # Also add to permanent storage
+        sanitized = self._sanitize_record(error)
+        self.errors_buffer.append(sanitized)
+        self.all_errors.append(sanitized)  # Also add to permanent storage
     
     def _save_incremental(self):
         """Save results incrementally"""
@@ -263,10 +292,16 @@ class ResultsManager:
         incremental_file = self.output_dir / f"results_incremental_{timestamp}.json"
         
         with open(incremental_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                'results': self.results_buffer,
-                'errors': self.errors_buffer
-            }, f, ensure_ascii=False, indent=2)
+            try:
+                json.dump({
+                    'results': self.results_buffer,
+                    'errors': self.errors_buffer
+                }, f, ensure_ascii=False, indent=2)
+            except TypeError as e:
+                # If incremental save fails due to an unexpected non-serializable value,
+                # log the issue and continue the experiment. Final saving will still run
+                # using the accumulated all_results/all_errors.
+                logger.error(f"Failed incremental save to {incremental_file}: {e}. Skipping this incremental write.")
     
     def save_final_results(self, metadata: ExperimentMetadata) -> Tuple[Path, Path]:
         """Save final results with metadata"""
@@ -318,12 +353,9 @@ class ResultsManager:
                 'correct': len(model_df[model_df['is_correct']]),
                 'accuracy': len(model_df[model_df['is_correct']]) / len(model_df) if len(model_df) > 0 else 0
             }
-        
-        # Similar for dataset and prompt_type.
-        # Prefer source_dataset_short, then source_dataset, then fallback to dataset.
-        if 'source_dataset_short' in df.columns:
-            dataset_col = 'source_dataset_short'
-        elif 'source_dataset' in df.columns:
+
+        # Accuracy by underlying dataset (v5 uses a single column: source_dataset)
+        if 'source_dataset' in df.columns:
             dataset_col = 'source_dataset'
         else:
             dataset_col = 'dataset'
@@ -500,13 +532,10 @@ def run_experiment(config_path: str = "config.yaml"):
                 # Load dataset
                 df = pd.read_csv(dataset_config['file_path'], sep='\t')
 
-                # Log underlying datasets present in this file (short codes if available)
-                if 'dataset_short' in df.columns:
-                    underlying = sorted(df['dataset_short'].dropna().unique().tolist())
-                    logger.info(f"Processing dataset group: {dataset_name} (underlying: {underlying})")
-                elif 'dataset' in df.columns:
-                    underlying = sorted(df['dataset'].dropna().unique().tolist())
-                    logger.info(f"Processing dataset group: {dataset_name} (underlying long names: {underlying})")
+                # Log underlying sources present in this v5 dataset (based on 'source' column)
+                if 'source' in df.columns:
+                    underlying = sorted(df['source'].dropna().unique().tolist())
+                    logger.info(f"Processing dataset group: {dataset_name} (sources: {underlying})")
                 else:
                     logger.info(f"Processing dataset: {dataset_name}")
                 
@@ -533,9 +562,9 @@ def run_experiment(config_path: str = "config.yaml"):
                             }
                             mapping = {f'exp{i}': f'exp{i}' for i in range(1, 5)}
                         
-                        # Format prompt
+                        # Format prompt (v5: 'word' column replaces 'lemma')
                         prompt_data = {
-                            'lemma': row['lemma'],
+                            'lemma': row['word'],
                             'sentence': row['sentence'],
                             **shuffled_exps
                         }
@@ -553,17 +582,16 @@ def run_experiment(config_path: str = "config.yaml"):
                         # Add a small delay to prevent overwhelming the server
                         time.sleep(0.5)
                         
-                        # Record result
+                        # Record result (v5 schema: 'word' and single underlying dataset column 'source_dataset')
                         result = {
                             'model': model,
                             # High-level dataset label from config
                             'dataset': dataset_name,
-                            # Original v4 dataset name and short code from the TSV
-                            'source_dataset': row.get('dataset'),
-                            'source_dataset_short': row.get('dataset_short'),
+                            # Source dataset name from v5 TSV
+                            'source_dataset': row.get('source'),
                             'prompt_type': prompt_type,
                             'idx': idx,
-                            'lemma': row['lemma'],
+                            'lemma': row['word'],
                             'sentence': row['sentence'],
                             'correct_answer': row['exp1'], # Always use exp1 for correct answer
                             'timestamp': start_time.isoformat(),

@@ -1,7 +1,7 @@
 # Experiment configuration
 experiment:
-  name: "Danish Metaphor Benchmark v4"
-  output_dir: "results"
+  name: "Danish Metaphor Benchmark v5"
+  output_dir: "results/v5"
   random_seed: 42
 
 # Model configurations
@@ -54,8 +54,8 @@ prompts:
       Svar kun med ét bogstav: a, b, c, d eller e
     response_type: "single_choice"
 
-# Data configuration - v4 aggregated dataset
+# Data configuration - v5 dataset
 datasets:
-  - name: "combined_v4"
-    file_path: "data/v4/combined_v4.tsv"
+  - name: "danish_metaphors_v5"
+    file_path: "data/v5/danish_metaphors_v5.tsv"
     shuffle_explanations: true

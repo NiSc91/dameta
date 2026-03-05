@@ -23,7 +23,17 @@ def recover_results_from_incremental(output_dir: str):
     for file_path in sorted(incremental_files):
         print(f"Processing {file_path.name}")
         with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError as e:
+                # Don't skip corrupted files automatically, but provide
+                # explicit information about which file failed and why so
+                # it can be repaired or re-run using the checkpoint cleaner.
+                print("\nERROR: Failed to parse incremental file as JSON:")
+                print(f"  File : {file_path}")
+                print(f"  Error: {e}")
+                # Re-raise so the traceback is preserved after this context
+                raise
             all_results.extend(data.get('results', []))
             all_errors.extend(data.get('errors', []))
     
@@ -93,5 +103,5 @@ def recover_results_from_incremental(output_dir: str):
 
 if __name__ == "__main__":
     # Update this path to your actual output directory
-    output_dir = "results"  # Changed from "output" to "results"
+    output_dir = "results/v5"  # Changed from "output" to "results"
     recover_results_from_incremental(output_dir)

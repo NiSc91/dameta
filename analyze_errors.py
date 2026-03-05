@@ -31,115 +31,81 @@ class ErrorAnalyzer:
             return json.load(f)
     
     def _load_dataset_metadata(self) -> Dict:
-        """Load metadata for samples"""
-        TOPIC_TRANSLATIONS = {
-            'OB farve': 'OB color', 'OB følelse': 'OB emotion',
-            'OB rejse': 'OB travel', 'OB smag': 'OB taste',
-            'anatomi': 'anatomy', 'arkitektur': 'architecture',
-            'byggeri': 'construction', 'erhverv': 'business',
-            'familie': 'family', 'film': 'film',
-            'genprox bog': 'genprox book', 'håndarbejde': 'handicraft',
-            'håndværk': 'craftsmanship', 'kommunikation': 'communication',
-            'litteratur': 'literature', 'mad/gastronomi': 'food/gastronomy',
-            'medicin/sundhed': 'medicine/health', 'meteorologi': 'meteorology',
-            'militær': 'military', 'musik': 'music',
-            'psykologi': 'psychology', 'trafik': 'traffic',
-            'skib/søfart': 'shipping/nautical'
-        }
+        """Load metadata for samples from the v5 TSV.
+
+        In v5, the original TSV already contains `type` and `domain` for all
+        items, and domains are in English. We therefore:
+
+        - Load the v5 TSV specified in config.yaml (dataset name
+          `danish_metaphors_v5`), or fall back to the default
+          `data/v5/danish_metaphors_v5.tsv`.
+        - Build simple index-based mappings from `idx` (the evaluation index)
+          to `type` and `domain`.
+
+        We assume that the `idx` stored in the results corresponds to the
+        row index of the v5 TSV (0-based), as in the evaluation script.
+        """
 
         metadata: Dict[str, Dict] = {}
 
-        if 'source_dataset_short' not in self.df.columns:
-            return metadata
-
-        # Locate the combined v4 dataset TSV: prefer config.yaml if given,
-        # otherwise fall back to the default path used in this project.
-        combined_path: Path = None
+        # Locate the v5 dataset TSV
+        v5_path: Path | None = None
         if self.config_file and self.config_file.exists():
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f)
                 for ds_cfg in config.get('datasets', []):
-                    if ds_cfg.get('name') == 'combined_v4' and 'file_path' in ds_cfg:
+                    if ds_cfg.get('name') == 'danish_metaphors_v5' and 'file_path' in ds_cfg:
                         candidate = Path(ds_cfg['file_path'])
                         if candidate.exists():
-                            combined_path = candidate
+                            v5_path = candidate
                             break
             except Exception as e:
                 print(f"Warning: Could not read config file for metadata: {e}")
 
-        if combined_path is None:
-            default_path = Path(__file__).parent / 'data' / 'v4' / 'combined_v4.tsv'
+        if v5_path is None:
+            default_path = Path(__file__).parent / 'data' / 'v5' / 'danish_metaphors_v5.tsv'
             if default_path.exists():
-                combined_path = default_path
+                v5_path = default_path
 
-        if combined_path is None or not combined_path.exists():
+        if v5_path is None or not v5_path.exists():
             return metadata
 
         try:
-            combined_df = pd.read_csv(combined_path, sep='\t')
+            v5_df = pd.read_csv(v5_path, sep='\t')
         except Exception as e:
-            print(f"Warning: Could not load combined v4 dataset for metadata: {e}")
+            print(f"Warning: Could not load v5 dataset for metadata: {e}")
             return metadata
 
-        if 'dataset_short' not in combined_df.columns:
-            return metadata
+        # Build idx -> type / domain mappings based on the v5 TSV.
+        # We key by the DataFrame row index (0-based) and assume this matches
+        # the `idx` used during evaluation.
+        type_mapping: Dict[int, str] = {}
+        domain_mapping: Dict[int, str] = {}
 
-        df_results = self.df
+        has_type = 'type' in v5_df.columns
+        has_domain = 'domain' in v5_df.columns
 
-        # Collect evaluated indices per original dataset (short code)
-        evaluated_indices: Dict[str, set] = {}
-        for ds in df_results['source_dataset_short'].dropna().unique():
-            ds_df = df_results[df_results['source_dataset_short'] == ds]
-            if len(ds_df) > 0:
-                evaluated_indices[ds] = set(ds_df['idx'].unique())
+        for i, row in v5_df.iterrows():
+            if has_type and pd.notna(row['type']):
+                raw_type = row['type']
+                # Normalise to canonical string codes '1','2','3' etc.
+                try:
+                    # Handles numeric types like 1, 1.0, np.int64, etc.
+                    type_code = str(int(float(raw_type)))
+                except Exception:
+                    # Fallback for non-numeric but non-null strings
+                    type_code = str(raw_type).strip()
 
-        # 1) NS_DaFig: real type column exists in the original data
-        if 'NS_DaFig' in evaluated_indices and 'type' in combined_df.columns:
-            type_mapping: Dict[int, str] = {}
-            for idx in evaluated_indices['NS_DaFig']:
-                if 0 <= idx < len(combined_df):
-                    row = combined_df.iloc[idx]
-                    if row.get('dataset_short') == 'NS_DaFig' and pd.notna(row['type']):
-                        raw_val = row['type']
-                        # Treat negative values as invalid and skip them entirely
-                        try:
-                            if float(raw_val) < 0:
-                                continue
-                        except Exception:
-                            # If it cannot be parsed as float, fall back to string check
-                            if str(raw_val).strip().startswith('-'):
-                                continue
-                        type_value = str(int(float(raw_val))) if isinstance(raw_val, (int, float, np.number)) else str(raw_val)
-                        type_mapping[idx] = type_value
-            metadata['NS_DaFig'] = {'type_mapping': type_mapping}
+                type_mapping[int(i)] = type_code
 
-        # 2) SN_DDO (non ad-hoc): always Type 1, with topics from `emne` if present
-        if 'SN_DDO' in evaluated_indices:
-            idxs = evaluated_indices['SN_DDO']
-            type_mapping = {idx: '1' for idx in idxs}
+            if has_domain and pd.notna(row['domain']) and str(row['domain']) != '-':
+                domain_mapping[int(i)] = str(row['domain'])
 
-            topic_mapping_english: Dict[int, str] = {}
-            if 'emne' in combined_df.columns:
-                for idx in idxs:
-                    if 0 <= idx < len(combined_df):
-                        row = combined_df.iloc[idx]
-                        if row.get('dataset_short') == 'SN_DDO' and pd.notna(row['emne']):
-                            danish_topic = row['emne']
-                            english_topic = TOPIC_TRANSLATIONS.get(danish_topic, danish_topic)
-                            topic_mapping_english[idx] = english_topic
-
-            entry: Dict[str, Dict] = {'type_mapping': type_mapping}
-            if topic_mapping_english:
-                entry['topic_mapping'] = topic_mapping_english
-            metadata['SN_DDO'] = entry
-
-        # 3) Ad-hoc datasets: BSP_pol_ad_hoc and SN_DDO_ad_hoc are always Type 3
-        for ds_name in ['BSP_pol_ad_hoc', 'SN_DDO_ad_hoc']:
-            if ds_name in evaluated_indices:
-                idxs = evaluated_indices[ds_name]
-                type_mapping = {idx: '3' for idx in idxs}
-                metadata[ds_name] = {'type_mapping': type_mapping}
+        if type_mapping:
+            metadata['type_mapping'] = type_mapping
+        if domain_mapping:
+            metadata['domain_mapping'] = domain_mapping
 
         return metadata
 
@@ -502,19 +468,26 @@ class ErrorAnalyzer:
     def _create_figure2_type_analysis(self, output_path):
         """Figure 2: Error distribution by type (averaged over prompts)"""
         
-        # Add type information to dataframe using per-dataset logic based on
-        # the original dataset identifier `source_dataset_short`.
-        df_with_type = self.df.copy()
+        # For v5, type information comes directly from the v5 TSV via
+        # dataset_metadata['type_mapping'][idx]. We no longer infer types
+        # from dataset names or assign per-dataset defaults.
 
-        if not self.dataset_metadata:
-            print("No dataset metadata available for type analysis")
+        type_mapping = self.dataset_metadata.get('type_mapping') if self.dataset_metadata else None
+        if not type_mapping:
+            print("No type_mapping available in v5 metadata for type analysis")
             return
 
+        df_with_type = self.df.copy()
+
         def _lookup_type(row):
-            ds_key = row.get('source_dataset_short') or row.get('dataset')
-            if ds_key is None:
+            idx = row.get('idx')
+            if pd.isna(idx):
                 return None
-            return self.dataset_metadata.get(ds_key, {}).get('type_mapping', {}).get(row['idx'], None)
+            try:
+                i = int(idx)
+            except Exception:
+                return None
+            return type_mapping.get(i)
 
         df_with_type['type'] = df_with_type.apply(_lookup_type, axis=1)
         df_with_type = df_with_type.dropna(subset=['type'])
@@ -598,44 +571,48 @@ class ErrorAnalyzer:
         plt.close()
 
     def _create_figure3_topic_analysis(self, output_path):
-        """Figure 3: Error distribution by topic (averaged over prompts)"""
-        
-        # Use topic information from dataset_metadata (SN_DDO topics derived
-        # from the combined v4 dataset) and link it to the results by idx.
+        """Figure 3: Error distribution by topic/domain (averaged over prompts).
 
-        if 'source_dataset_short' not in self.df.columns:
-            print("No 'source_dataset_short' column available for topic analysis")
+        In v5, topic information is stored directly as an English `domain`
+        in the TSV. We use dataset_metadata['domain_mapping'][idx] to attach
+        domains to the evaluated items, and we drop items where domain is
+        missing or "-" in the original file (already filtered in metadata).
+        """
+
+        domain_mapping = self.dataset_metadata.get('domain_mapping') if self.dataset_metadata else None
+        if not domain_mapping:
+            print("No domain_mapping available in v5 metadata for topic/domain analysis")
             return
 
-        if 'SN_DDO' not in self.dataset_metadata or \
-           'topic_mapping' not in self.dataset_metadata['SN_DDO']:
-            print("No topic metadata available for SN_DDO topic analysis")
+        ddf = self.df.copy()
+
+        def _lookup_domain(row):
+            idx = row.get('idx')
+            if pd.isna(idx):
+                return None
+            try:
+                i = int(idx)
+            except Exception:
+                return None
+            return domain_mapping.get(i)
+
+        ddf['topic'] = ddf.apply(_lookup_domain, axis=1)
+        ddf = ddf.dropna(subset=['topic'])
+
+        if len(ddf) == 0:
+            print("No topics/domains available for topic analysis after mapping")
             return
 
-        # Filter for SN_DDO items only
-        ddo_df = self.df[self.df['source_dataset_short'] == 'SN_DDO'].copy()
+        # Get top 11 topics/domains by frequency, then exclude
+        # 'communication' and 'psychology' to match the original v4 logic
+        topic_counts = ddf.groupby('topic')['idx'].nunique()
+        top_topics = topic_counts.nlargest(11).index.tolist()
+        top_topics = [t for t in top_topics if t not in ['communication', 'psychology']]
 
-        if len(ddo_df) == 0:
-            print("No SN_DDO data available for topic analysis")
-            return
-
-        topic_mapping = self.dataset_metadata['SN_DDO']['topic_mapping']
-        ddo_df['topic'] = ddo_df['idx'].map(topic_mapping)
-        ddo_df = ddo_df.dropna(subset=['topic'])
-
-        if len(ddo_df) == 0:
-            print("No topics available for topic analysis after mapping")
-            return
-
-        # Get top topics by frequency
-        topic_counts = ddo_df.groupby('topic')['idx'].nunique()
-        top_topics = [t for t in topic_counts.nlargest(11).index.tolist()
-                      if t not in ['communication', 'psychology']]
-
-        # Calculate accuracy by topic
+        # Calculate accuracy by topic/domain
         topic_accuracy = {}
         for topic in top_topics:
-            topic_df = ddo_df[ddo_df['topic'] == topic]
+            topic_df = ddf[ddf['topic'] == topic]
             acc = topic_df['is_correct'].mean() * 100
             count = topic_df['idx'].nunique()
             topic_accuracy[topic] = (acc, count)
@@ -677,7 +654,7 @@ class ErrorAnalyzer:
                     fontsize=10, fontweight='bold')
 
         # Add overall average line
-        overall_acc = ddo_df['is_correct'].mean() * 100
+        overall_acc = ddf['is_correct'].mean() * 100
         ax.axhline(y=overall_acc, color='red', linestyle='--', alpha=0.7,
                    label=f'Overall DDO: {overall_acc:.1f}%', linewidth=2)
 
@@ -770,6 +747,152 @@ class ErrorAnalyzer:
                     'dont_know_rate': dk,
                 }
         summary['per_dataset'] = per_dataset
+
+        # ------------------------------------------------------------------
+        # Textual / structured summaries for all figures
+        # ------------------------------------------------------------------
+
+        figure_summaries = {}
+
+        # Figure 1: Overall comparison with human performance
+        proprietary_models = ['openrouter/openai/gpt-4o-mini', 'openrouter/anthropic/claude-3.5-sonnet']
+        local_models = ['llama3.1', 'gemma2', 'mistral', 'qwen2.5', 'phi4']
+
+        prompt_v1 = self.df[self.df['prompt_type'] == 'met_v1']
+        prompt_v2 = self.df[self.df['prompt_type'] == 'met_v2']
+
+        v1_proprietary = prompt_v1[prompt_v1['model'].isin(proprietary_models)]
+        v1_local = prompt_v1[prompt_v1['model'].isin(local_models)]
+        v2_proprietary = prompt_v2[prompt_v2['model'].isin(proprietary_models)]
+        v2_local = prompt_v2[prompt_v2['model'].isin(local_models)]
+
+        human_acc = 89.58
+
+        def _acc(df):
+            return float(df['is_correct'].mean()) if len(df) > 0 else None
+
+        def _dk(df):
+            if 'chose_dont_know' not in df.columns or len(df) == 0:
+                return None
+            return float(df['chose_dont_know'].mean())
+
+        figure_summaries['figure1_overall_comparison'] = {
+            'human_accuracy': human_acc,
+            'prompt_v1': {
+                'proprietary_accuracy': _acc(v1_proprietary),
+                'local_accuracy': _acc(v1_local),
+                'proprietary_dont_know_rate': _dk(v1_proprietary),
+                'local_dont_know_rate': _dk(v1_local),
+            },
+            'prompt_v2': {
+                'proprietary_accuracy': _acc(v2_proprietary),
+                'local_accuracy': _acc(v2_local),
+                'proprietary_dont_know_rate': _dk(v2_proprietary),
+                'local_dont_know_rate': _dk(v2_local),
+            },
+        }
+
+        # Figure 2: Distractor distribution comparison (human vs models)
+        human_dist = [3.70, 5.32, 1.39, 0.0]
+
+        def _distractor_dist(df_subset):
+            if len(df_subset) == 0:
+                return [0.0, 0.0, 0.0, 0.0]
+            dist = []
+            for exp in ['exp2', 'exp3', 'exp4', 'dont_know']:
+                pred_count = (df_subset['predicted_original'] == exp).sum()
+                dist.append(float(pred_count) / float(len(df_subset)))
+            return dist
+
+        figure_summaries['figure2_distractor_comparison'] = {
+            'labels': ['Literal distractor', 'Figurative distractor', 'Contradictory distractor', "Don't know"],
+            'human_distribution': human_dist,
+            'v1_proprietary_distribution': _distractor_dist(v1_proprietary),
+            'v1_local_distribution': _distractor_dist(v1_local),
+            'v2_proprietary_distribution': _distractor_dist(v2_proprietary),
+            'v2_local_distribution': _distractor_dist(v2_local),
+        }
+
+        # Figure 3: Type analysis summary (mirrors _create_figure2_type_analysis)
+        type_mapping = self.dataset_metadata.get('type_mapping') if self.dataset_metadata else None
+        figure3_type_summary = {}
+        if type_mapping:
+            df_with_type = self.df.copy()
+
+            def _lookup_type_summary(row):
+                idx = row.get('idx')
+                if pd.isna(idx):
+                    return None
+                try:
+                    i = int(idx)
+                except Exception:
+                    return None
+                return type_mapping.get(i)
+
+            df_with_type['type'] = df_with_type.apply(_lookup_type_summary, axis=1)
+            df_with_type = df_with_type.dropna(subset=['type'])
+            df_with_type['type'] = df_with_type['type'].astype(str)
+            df_with_type = df_with_type[df_with_type['type'].isin(['1', '2', '3'])]
+
+            for model in sorted(df_with_type['model'].dropna().unique()):
+                m_df = df_with_type[df_with_type['model'] == model]
+                model_types = {}
+                for t in sorted(m_df['type'].unique()):
+                    t_df = m_df[m_df['type'] == t]
+                    acc = float(t_df['is_correct'].mean()) if len(t_df) > 0 else None
+                    # Use the number of unique items (idx) rather than number of
+                    # evaluations, to mirror the domain n_items logic.
+                    n_items = int(t_df['idx'].nunique()) if 'idx' in t_df.columns else int(len(t_df))
+                    model_types[t] = {
+                        'n': n_items,
+                        'accuracy': acc,
+                    }
+                figure3_type_summary[model] = model_types
+
+        figure_summaries['figure3_type_analysis'] = figure3_type_summary
+
+        # Figure 4: Domain/topic analysis summary (mirrors _create_figure3_topic_analysis)
+        domain_mapping = self.dataset_metadata.get('domain_mapping') if self.dataset_metadata else None
+        figure4_domain_summary = {}
+        if domain_mapping:
+            ddf = self.df.copy()
+
+            def _lookup_domain_summary(row):
+                idx = row.get('idx')
+                if pd.isna(idx):
+                    return None
+                try:
+                    i = int(idx)
+                except Exception:
+                    return None
+                return domain_mapping.get(i)
+
+            ddf['topic'] = ddf.apply(_lookup_domain_summary, axis=1)
+            ddf = ddf.dropna(subset=['topic'])
+
+            if len(ddf) > 0:
+                topic_counts = ddf.groupby('topic')['idx'].nunique()
+                top_topics = topic_counts.nlargest(11).index.tolist()
+                top_topics = [t for t in top_topics if t not in ['communication', 'psychology']]
+
+                for topic in top_topics:
+                    topic_df = ddf[ddf['topic'] == topic]
+                    acc = float(topic_df['is_correct'].mean()) if len(topic_df) > 0 else None
+                    n_items = int(topic_df['idx'].nunique())
+                    figure4_domain_summary[topic] = {
+                        'n_items': n_items,
+                        'accuracy': acc,
+                    }
+
+                overall_acc_ddo = float(ddf['is_correct'].mean()) if len(ddf) > 0 else None
+                figure4_domain_summary['_overall'] = {
+                    'accuracy': overall_acc_ddo,
+                    'n_items': int(ddf['idx'].nunique()),
+                }
+
+        figure_summaries['figure4_domain_analysis'] = figure4_domain_summary
+
+        summary['figure_summaries'] = figure_summaries
 
         # Type-level summary (mirrors Figure 2 logic)
         type_summary = {}
