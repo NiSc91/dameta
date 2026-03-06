@@ -11,9 +11,10 @@ import yaml
 
 matplotlib.use('Agg')
 
+
 class ErrorAnalyzer:
     """Analyze errors from LLM evaluation results"""
-    
+
     def __init__(self, results_file: str, config_file: str = None):
         """Initialize with results file and optional config file"""
         self.results_file = Path(results_file)
@@ -24,12 +25,12 @@ class ErrorAnalyzer:
         # we always attempt to load it regardless of whether a config file is
         # provided. The config file is only needed for optional extras.
         self.dataset_metadata = self._load_dataset_metadata()
-    
+
     def _load_results(self) -> Dict:
         """Load results from JSON file"""
         with open(self.results_file, 'r', encoding='utf-8') as f:
             return json.load(f)
-    
+
     def _load_dataset_metadata(self) -> Dict:
         """Load metadata for samples from the v5 TSV.
 
@@ -113,22 +114,22 @@ class ErrorAnalyzer:
         """Create all 5 required figures"""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
-        
+
         # Figure 1: Overall comparison with human performance
         self._create_figure1_overall_comparison(output_path)
-        
+
         # Figure 2 & 3: Distractor analysis per model for each prompt version
-        #self._create_figure2_3_distractor_per_model(output_path)
-        
+        # self._create_figure2_3_distractor_per_model(output_path)
+
         # Table
         self._create_table2_model_performance(output_path)
-        
+
         # Figure 4: Error distribution by type (averaged over prompts)
         self._create_figure2_type_analysis(output_path)
-        
+
         # Figure 3: Error distribution by topic (averaged over prompts)
         self._create_figure3_topic_analysis(output_path)
-        
+
         # Save machine-readable summary of all key analyses
         self._save_analysis_summary(output_path)
 
@@ -173,23 +174,23 @@ class ErrorAnalyzer:
             v2_local) > 0 else 0
 
         # Console summary for Figure 1
-        #print("\n" + "="*80)
-        #print("Figure 1: Overall performance and don't-know rates")
-        #print("(Human baseline vs Proprietary vs Local LLMs)")
-        #print("="*80)
-        #print("Accuracy (%):")
-        #print(f"  Human                : {human_acc:5.1f}")
-        #print(f"  Proprietary (V1)     : {v1_prop_acc:5.1f}")
-        #print(f"  Local (V1)           : {v1_local_acc:5.1f}")
-        #print(f"  Proprietary (V2)     : {v2_prop_acc:5.1f}")
-        #print(f"  Local (V2)           : {v2_local_acc:5.1f}")
-        #print("\nDon't-know rates (%):")
-        #print(f"  Proprietary (V1)     : {v1_prop_dk:5.1f}")
-        #print(f"  Local (V1)           : {v1_local_dk:5.1f}")
-        #print(f"  Proprietary (V2)     : {v2_prop_dk:5.1f}")
-        #print(f"  Local (V2)           : {v2_local_dk:5.1f}")
-        #print("="*80)
-        
+        # print("\n" + "="*80)
+        # print("Figure 1: Overall performance and don't-know rates")
+        # print("(Human baseline vs Proprietary vs Local LLMs)")
+        # print("="*80)
+        # print("Accuracy (%):")
+        # print(f"  Human                : {human_acc:5.1f}")
+        # print(f"  Proprietary (V1)     : {v1_prop_acc:5.1f}")
+        # print(f"  Local (V1)           : {v1_local_acc:5.1f}")
+        # print(f"  Proprietary (V2)     : {v2_prop_acc:5.1f}")
+        # print(f"  Local (V2)           : {v2_local_acc:5.1f}")
+        # print("\nDon't-know rates (%):")
+        # print(f"  Proprietary (V1)     : {v1_prop_dk:5.1f}")
+        # print(f"  Local (V1)           : {v1_local_dk:5.1f}")
+        # print(f"  Proprietary (V2)     : {v2_prop_dk:5.1f}")
+        # print(f"  Local (V2)           : {v2_local_dk:5.1f}")
+        # print("="*80)
+
         # Left plot: Accuracy comparison
         categories = ['Proprietary LLMs', 'Open LLMs']
         v1_accuracies = [v1_prop_acc, v1_local_acc]
@@ -302,33 +303,35 @@ class ErrorAnalyzer:
 
     def _create_table2_model_performance(self, output_path):
         """Table 2: Model performance comparison showing accuracy and don't-know rates"""
-        
+
         # Prepare data for each model and prompt version
         models = sorted(self.df['model'].unique())
-        
+
         # Define model categories for better organization
         proprietary_models = ['openrouter/openai/gpt-4o-mini', 'openrouter/anthropic/claude-3.5-sonnet']
         local_models = ['llama3.1', 'gemma2', 'mistral', 'qwen2.5', 'phi4']
-        
+
         # Create table data
         table_data = []
-        
+
         for model in models:
             # Get data for both prompt versions
             v1_df = self.df[(self.df['model'] == model) & (self.df['prompt_type'] == 'met_v1')]
             v2_df = self.df[(self.df['model'] == model) & (self.df['prompt_type'] == 'met_v2')]
-            
+
             # Calculate metrics
             v1_accuracy = v1_df['is_correct'].mean() * 100 if len(v1_df) > 0 else 0
             v2_accuracy = v2_df['is_correct'].mean() * 100 if len(v2_df) > 0 else 0
-            
+
             # Calculate don't-know rates if the column exists
-            v1_dk = v1_df['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_df.columns and len(v1_df) > 0 else 0
-            v2_dk = v2_df['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_df.columns and len(v2_df) > 0 else 0
-            
+            v1_dk = v1_df['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v1_df.columns and len(
+                v1_df) > 0 else 0
+            v2_dk = v2_df['chose_dont_know'].mean() * 100 if 'chose_dont_know' in v2_df.columns and len(
+                v2_df) > 0 else 0
+
             # Determine model type
             model_type = 'Proprietary' if model in proprietary_models else 'Local'
-            
+
             table_data.append({
                 'Model': model,
                 'Type': model_type,
@@ -337,10 +340,10 @@ class ErrorAnalyzer:
                 'V2 Accuracy': v2_accuracy,
                 'V2 Don\'t Know': v2_dk
             })
-        
+
         # Sort by type (Proprietary first) then by V2 accuracy
         table_data.sort(key=lambda x: (x['Type'] != 'Proprietary', -x['V2 Accuracy']))
-        
+
         # Create LaTeX table
         latex_table = []
         latex_table.append("\\begin{table}[h]")
@@ -349,15 +352,16 @@ class ErrorAnalyzer:
         latex_table.append("\\label{tab:model_performance}")
         latex_table.append("\\begin{tabular}{llrrrr}")
         latex_table.append("\\toprule")
-        latex_table.append("\\multirow{2}{*}{Model} & \\multirow{2}{*}{Type} & \\multicolumn{2}{c}{Prompt V1} & \\multicolumn{2}{c}{Prompt V2} \\\\")
+        latex_table.append(
+            "\\multirow{2}{*}{Model} & \\multirow{2}{*}{Type} & \\multicolumn{2}{c}{Prompt V1} & \\multicolumn{2}{c}{Prompt V2} \\\\")
         latex_table.append("\\cmidrule(lr){3-4} \\cmidrule(lr){5-6}")
         latex_table.append(" & & Accuracy (\\%) & Don't Know (\\%) & Accuracy (\\%) & Don't Know (\\%) \\\\")
         latex_table.append("\\midrule")
-        
+
         # Add human baseline
         latex_table.append(f"Human & - & 89.58 & - & 89.58 & - \\\\")
         latex_table.append("\\midrule")
-        
+
         # Add model data
         current_type = None
         for row in table_data:
@@ -365,56 +369,56 @@ class ErrorAnalyzer:
             if current_type and current_type != row['Type']:
                 latex_table.append("\\midrule")
             current_type = row['Type']
-            
+
             # Format model name for LaTeX (escape underscores)
             model_name = row['Model'].replace('_', '\\_')
-            
+
             # Format the row
             latex_table.append(f"""{model_name} & {row['Type']} & """
-                            f"""{row['V1 Accuracy']:.1f} & {row["V1 Don't Know"]:.1f} & """
-                            f"""{row['V2 Accuracy']:.1f} & {row["V2 Don't Know"]:.1f} \\\\""")
+                               f"""{row['V1 Accuracy']:.1f} & {row["V1 Don't Know"]:.1f} & """
+                               f"""{row['V2 Accuracy']:.1f} & {row["V2 Don't Know"]:.1f} \\\\""")
 
         latex_table.append("\\bottomrule")
         latex_table.append("\\end{tabular}")
         latex_table.append("\\end{table}")
-        
+
         # Save LaTeX table to file
         latex_output = '\n'.join(latex_table)
         with open(output_path / 'table2_model_performance.tex', 'w') as f:
             f.write(latex_output)
-        
+
         # Also create a CSV version for easy viewing
         import pandas as pd
         df_table = pd.DataFrame(table_data)
         df_table.to_csv(output_path / 'table2_model_performance.csv', index=False)
-        
+
         # Print the table for console viewing
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("Table 2: Model Performance Comparison")
-        print("="*80)
+        print("=" * 80)
         print(f"{'Model':<40} {'Type':<12} {'V1 Acc%':>8} {'V1 DK%':>8} {'V2 Acc%':>8} {'V2 DK%':>8}")
-        print("-"*80)
+        print("-" * 80)
         print(f"{'Human':<40} {'-':<12} {89.58:>8.1f} {'-':>8} {89.58:>8.1f} {'-':>8}")
-        print("-"*80)
-        
+        print("-" * 80)
+
         for row in table_data:
             print(f"""{row['Model']:<40} {row['Type']:<12} """
-                f"""{row['V1 Accuracy']:>8.1f} {row["V1 Don't Know"]:>8.1f} """
-                f"""{row['V2 Accuracy']:>8.1f} {row["V2 Don't Know"]:>8.1f}""")
-        
-        print("="*80)
+                  f"""{row['V1 Accuracy']:>8.1f} {row["V1 Don't Know"]:>8.1f} """
+                  f"""{row['V2 Accuracy']:>8.1f} {row["V2 Don't Know"]:>8.1f}""")
+
+        print("=" * 80)
         print(f"\nLaTeX table saved to: {output_path / 'table2_model_performance.tex'}")
         print(f"CSV table saved to: {output_path / 'table2_model_performance.csv'}")
-    
+
     def _create_figure2_3_distractor_per_model(self, output_path):
         """Figures 2 & 3: Distractor analysis per model for each prompt version"""
-        
+
         for prompt_idx, prompt_type in enumerate(['met_v1', 'met_v2'], 2):
             prompt_df = self.df[self.df['prompt_type'] == prompt_type]
-            
+
             # Get unique models
             models = sorted(prompt_df['model'].unique())
-            
+
             # Prepare data for each model
             model_data = {}
             for model in models:
@@ -424,50 +428,50 @@ class ErrorAnalyzer:
                     count = (model_df['predicted_original'] == exp).sum()
                     dist.append(count / len(model_df) * 100)
                 model_data[model] = dist
-            
+
             # Create figure
             fig, ax = plt.subplots(figsize=(12, 6))
-            
-            display_labels = ['Correct\n(Metaphorical)', 'Distractor 1\n(Concrete)', 
-                            'Distractor 2\n(Abstract)', 'Distractor 3\n(Antonym)']
+
+            display_labels = ['Correct\n(Metaphorical)', 'Distractor 1\n(Concrete)',
+                              'Distractor 2\n(Abstract)', 'Distractor 3\n(Antonym)']
             x = np.arange(len(display_labels))
             width = 0.8 / len(models)
-            
+
             colors_palette = plt.cm.Set2(np.linspace(0, 1, len(models)))
-            
+
             for i, model in enumerate(models):
-                offset = (i - len(models)/2 + 0.5) * width
-                bars = ax.bar(x + offset, model_data[model], width, 
-                             label=model, color=colors_palette[i], alpha=0.8, 
-                             edgecolor='black', linewidth=0.5)
-                
+                offset = (i - len(models) / 2 + 0.5) * width
+                bars = ax.bar(x + offset, model_data[model], width,
+                              label=model, color=colors_palette[i], alpha=0.8,
+                              edgecolor='black', linewidth=0.5)
+
                 # Add value labels on bars for correct answers only
                 if model_data[model][0] > 20:  # Only label if significant
                     ax.text(offset, model_data[model][0] + 1,
-                           f'{model_data[model][0]:.0f}%',
-                           ha='center', va='bottom', fontsize=9)
-            
+                            f'{model_data[model][0]:.0f}%',
+                            ha='center', va='bottom', fontsize=9)
+
             ax.set_xlabel('Response Type', fontsize=12, fontweight='bold')
             ax.set_ylabel('Percentage of Predictions (%)', fontsize=12, fontweight='bold')
-            
+
             prompt_name = 'Prompt V1' if prompt_type == 'met_v1' else 'Prompt V2'
             ax.set_title(f'Figure {prompt_idx}: Distractor Analysis per Model - {prompt_name}',
-                        fontsize=14, fontweight='bold')
-            
+                         fontsize=14, fontweight='bold')
+
             ax.set_xticks(x)
             ax.set_xticklabels(display_labels)
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', ncol=1)
             ax.grid(axis='y', alpha=0.3)
             ax.set_ylim(0, 100)
-            
+
             plt.tight_layout()
-            plt.savefig(output_path / f'figure{prompt_idx}_distractor_per_model_{prompt_type}.png', 
-                       dpi=300, bbox_inches='tight')
+            plt.savefig(output_path / f'figure{prompt_idx}_distractor_per_model_{prompt_type}.png',
+                        dpi=300, bbox_inches='tight')
             plt.close()
 
     def _create_figure2_type_analysis(self, output_path):
         """Figure 2: Error distribution by type (averaged over prompts)"""
-        
+
         # For v5, type information comes directly from the v5 TSV via
         # dataset_metadata['type_mapping'][idx]. We no longer infer types
         # from dataset names or assign per-dataset defaults.
@@ -496,7 +500,7 @@ class ErrorAnalyzer:
         # Keep only the three valid metaphor types; drop any leftover
         # negative/invalid codes (e.g. -1, -2, -3).
         df_with_type = df_with_type[df_with_type['type'].isin(['1', '2', '3'])]
-        
+
         # Map types to descriptive labels
         type_labels = {
             '1': 'Type 1: Lexicalized',
@@ -504,19 +508,28 @@ class ErrorAnalyzer:
             '3': 'Type 3: Ad-hoc'
         }
         df_with_type['type_label'] = df_with_type['type'].map(lambda x: type_labels.get(x, x))
-        
+
         # Get models
         models = sorted(df_with_type['model'].unique())
+
+        model_order = ["openrouter/anthropic/claude-3.5-sonnet",
+                       "openrouter/openai/gpt-4o-mini", "gemma2", "phi4", "qwen2.5", "llama3.1", "mistral"]
+
+        priority = {value: i for i, value in enumerate(model_order)}
+        # sorter modelrækkefølge så det passer til tabellen.
+        models = sorted(models, key=lambda x: priority[x])
+
         model_display_names = {model: model.split('/')[-1] for model in models}
-        
+
         types = sorted(df_with_type['type_label'].unique())
-        
+
+
         # Calculate accuracy by model and type
         accuracy_data = {}
         for model in models:
             model_accs = []
             for type_label in types:
-                subset = df_with_type[(df_with_type['model'] == model) & 
+                subset = df_with_type[(df_with_type['model'] == model) &
                                       (df_with_type['type_label'] == type_label)]
                 if len(subset) > 0:
                     acc = subset['is_correct'].mean() * 100
@@ -536,14 +549,14 @@ class ErrorAnalyzer:
         #     row_vals = [model_display_names[model]] + [f"{acc:.1f}%" for acc in accuracy_data[model]]
         #     print(" | ".join(f"{v:>20}" for v in row_vals))
         # print("="*80)
-        
+
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 8))
-        
+
         x = np.arange(len(models)) * 1.2
         width = 0.35
-        
-        colors = ['#649BD5', '#6FA054', '#E36D3F']  # Blue, Green, Orange
+
+        colors = ['#649BD5', '#75CC44', '#E36D3F']  # Blue, Green, Orange
 
         for i, type_label in enumerate(types):
             values = [accuracy_data[model][i] for model in models]
@@ -606,7 +619,7 @@ class ErrorAnalyzer:
         # Get top 11 topics/domains by frequency, then exclude
         # 'communication' and 'psychology' to match the original v4 logic
         topic_counts = ddf.groupby('topic')['idx'].nunique()
-        top_topics = topic_counts.nlargest(11).index.tolist()
+        top_topics = topic_counts.nlargest(12).index.tolist()
         top_topics = [t for t in top_topics if t not in ['communication', 'psychology']]
 
         # Calculate accuracy by topic/domain
@@ -678,7 +691,7 @@ class ErrorAnalyzer:
         print("=" * 60)
         print(f"Total evaluations: {len(self.df)}")
         print(f"Overall accuracy: {self.df['is_correct'].mean():.2%}")
-        
+
         for prompt_type in ['met_v1', 'met_v2']:
             prompt_df = self.df[self.df['prompt_type'] == prompt_type]
             prompt_name = 'Prompt V1' if prompt_type == 'met_v1' else 'Prompt V2'
@@ -703,7 +716,8 @@ class ErrorAnalyzer:
         for prompt_type in sorted(self.df['prompt_type'].dropna().unique()):
             prompt_df = self.df[self.df['prompt_type'] == prompt_type]
             acc = float(prompt_df['is_correct'].mean()) if len(prompt_df) > 0 else None
-            dk = float(prompt_df['chose_dont_know'].mean()) if 'chose_dont_know' in prompt_df.columns and len(prompt_df) > 0 else None
+            dk = float(prompt_df['chose_dont_know'].mean()) if 'chose_dont_know' in prompt_df.columns and len(
+                prompt_df) > 0 else None
             per_prompt[prompt_type] = {
                 'n': int(len(prompt_df)),
                 'accuracy': acc,
@@ -719,7 +733,8 @@ class ErrorAnalyzer:
             for prompt_type in sorted(model_df['prompt_type'].dropna().unique()):
                 mp_df = model_df[model_df['prompt_type'] == prompt_type]
                 acc = float(mp_df['is_correct'].mean()) if len(mp_df) > 0 else None
-                dk = float(mp_df['chose_dont_know'].mean()) if 'chose_dont_know' in mp_df.columns and len(mp_df) > 0 else None
+                dk = float(mp_df['chose_dont_know'].mean()) if 'chose_dont_know' in mp_df.columns and len(
+                    mp_df) > 0 else None
                 model_data[prompt_type] = {
                     'n': int(len(mp_df)),
                     'accuracy': acc,
@@ -740,7 +755,8 @@ class ErrorAnalyzer:
             for ds in sorted(self.df[dataset_col].dropna().unique()):
                 ds_df = self.df[self.df[dataset_col] == ds]
                 acc = float(ds_df['is_correct'].mean()) if len(ds_df) > 0 else None
-                dk = float(ds_df['chose_dont_know'].mean()) if 'chose_dont_know' in ds_df.columns and len(ds_df) > 0 else None
+                dk = float(ds_df['chose_dont_know'].mean()) if 'chose_dont_know' in ds_df.columns and len(
+                    ds_df) > 0 else None
                 per_dataset[ds] = {
                     'n': int(len(ds_df)),
                     'accuracy': acc,
@@ -926,8 +942,8 @@ class ErrorAnalyzer:
         # Topic-level summary for SN_DDO (mirrors Figure 3 logic)
         topic_summary = {}
         if 'source_dataset_short' in self.df.columns and \
-           'SN_DDO' in self.dataset_metadata and \
-           'topic_mapping' in self.dataset_metadata['SN_DDO']:
+                'SN_DDO' in self.dataset_metadata and \
+                'topic_mapping' in self.dataset_metadata['SN_DDO']:
             ddo_df = self.df[self.df['source_dataset_short'] == 'SN_DDO'].copy()
             if len(ddo_df) > 0:
                 topic_mapping = self.dataset_metadata['SN_DDO']['topic_mapping']
@@ -935,7 +951,7 @@ class ErrorAnalyzer:
                 ddo_df = ddo_df.dropna(subset=['topic'])
                 if len(ddo_df) > 0:
                     topic_counts = ddo_df.groupby('topic')['idx'].nunique()
-                    top_topics = [t for t in topic_counts.nlargest(10).index.tolist() 
+                    top_topics = [t for t in topic_counts.nlargest(10).index.tolist()
                                   if t not in ['communication', 'psychology']]
                     for topic in top_topics:
                         t_df = ddo_df[ddo_df['topic'] == topic]
@@ -962,17 +978,18 @@ class ErrorAnalyzer:
 
 def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Analyze LLM evaluation errors')
     parser.add_argument('results_file', help='Path to results JSON file')
     parser.add_argument('--config', '-c', help='Path to config YAML file for metadata analysis')
     parser.add_argument('--plot-dir', default='plots', help='Directory for plot output')
-    
+
     args = parser.parse_args()
-    
+
     analyzer = ErrorAnalyzer(args.results_file, args.config)
     analyzer.print_summary()
     analyzer.create_all_figures(args.plot_dir)
+
 
 if __name__ == "__main__":
     main()
